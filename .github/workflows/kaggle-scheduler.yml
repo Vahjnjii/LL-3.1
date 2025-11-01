@@ -9,6 +9,9 @@ on:
     - cron: '50 0,9,18 * * *'  # Runs at 00:50, 09:50, and 18:50 UTC (approximately every 9 hours)
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   run-notebook:
     runs-on: ubuntu-latest
