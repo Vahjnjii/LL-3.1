@@ -1,0 +1,128 @@
+name: Run Kaggle Notebook
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/kaggle-scheduler.yml'
+  schedule:
+    - cron: '50 0,9,18 * * *'  # Runs at 00:50, 09:50, and 18:50 UTC (approximately every 9 hours)
+  workflow_dispatch:
+
+jobs:
+  run-notebook:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Keep Repository Active
+        run: |
+          mkdir -p .github
+          echo "Last run: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" > .github/last-run.txt
+          echo "Trigger: ${{ github.event_name }}" >> .github/last-run.txt
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git add .github/last-run.txt
+          if ! git diff --staged --quiet; then
+            git commit -m "🤖 Run: $(date -u +%Y-%m-%d-%H%M)"
+            git push
+          fi
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Install Kaggle CLI
+        run: pip install --quiet kaggle
+      
+      - name: Configure Kaggle Credentials
+        run: |
+          mkdir -p ~/.kaggle
+          echo '{"username":"shreevathsbbhh","key":"46675a9b7dbf9ee364dccd62b33c1354"}' > ~/.kaggle/kaggle.json
+          chmod 600 ~/.kaggle/kaggle.json
+      
+      - name: Pull Notebook and Metadata from Kaggle
+        run: |
+          echo "📥 Pulling notebook with metadata..."
+          kaggle kernels pull shreevathsbbhh/ll-3-1 -p ./notebook -m
+          if [ ! -f "./notebook/ll-3-1.ipynb" ]; then
+            echo "❌ Failed to download"
+            exit 1
+          fi
+          if [ -f "./notebook/kernel-metadata.json" ]; then
+            echo "✅ Metadata downloaded (datasets preserved)"
+          else
+            echo "⚠️ No metadata file"
+          fi
+      
+      - name: Modify Notebook with Timestamp
+        run: |
+          cd ./notebook
+          python3 << 'EOF'
+          import json
+          from datetime import datetime
+          import os
+          
+          with open('ll-3-1.ipynb', 'r', encoding='utf-8') as f:
+              notebook = json.load(f)
+          
+          trigger = os.environ.get('GITHUB_EVENT_NAME', 'unknown')
+          run_num = os.environ.get('GITHUB_RUN_NUMBER', '0')
+          now = datetime.utcnow()
+          
+          timestamp_cell = {
+              "cell_type": "code",
+              "execution_count": None,
+              "metadata": {},
+              "outputs": [],
+              "source": [
+                  f"# Automated run triggered at {now.isoformat()}\n",
+                  "import datetime\n",
+                  f"print('Notebook execution started at: {now}')\n",
+                  "print('This run was triggered automatically')"
+              ]
+          }
+          
+          notebook['cells'].insert(0, timestamp_cell)
+          
+          with open('ll-3-1.ipynb', 'w', encoding='utf-8') as f:
+              json.dump(notebook, f, indent=2, ensure_ascii=False)
+          
+          print(f"✅ Modified at {now.strftime('%H:%M:%S')} UTC")
+          EOF
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+      
+      - name: Push Notebook to Kaggle
+        run: |
+          cd ./notebook
+          echo "📤 Pushing to Kaggle..."
+          kaggle kernels push
+          if [ $? -eq 0 ]; then
+            echo "✅ Push successful"
+          else
+            echo "❌ Push failed"
+            exit 1
+          fi
+      
+      - name: Verify Execution
+        run: |
+          sleep 20
+          kaggle kernels status shreevathsbbhh/ll-3-1 || true
+          echo "✅ Complete"
+          echo "🔗 https://www.kaggle.com/code/shreevathsbbhh/ll-3-1"
+      
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time:** $(date -u)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Next Run:** ~9 hours" >> $GITHUB_STEP_SUMMARY
