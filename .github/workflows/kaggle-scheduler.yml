@@ -6,7 +6,7 @@ on:
     paths:
       - '.github/workflows/kaggle-scheduler.yml'
   schedule:
-    - cron: '0 */12 * * *'  # Every 12 hours
+    - cron: '45 */11 * * *'  # Every 11 hours 45 minutes (runs at :45 of every 11th hour)
   workflow_dispatch:
 
 permissions:
@@ -63,45 +63,6 @@ jobs:
             echo "⚠️ No metadata file"
           fi
       
-      - name: Modify Notebook with Timestamp
-        run: |
-          cd ./notebook
-          python3 << 'EOF'
-          import json
-          from datetime import datetime
-          import os
-          
-          with open('ll-3-1.ipynb', 'r', encoding='utf-8') as f:
-              notebook = json.load(f)
-          
-          trigger = os.environ.get('GITHUB_EVENT_NAME', 'unknown')
-          run_num = os.environ.get('GITHUB_RUN_NUMBER', '0')
-          now = datetime.utcnow()
-          
-          timestamp_cell = {
-              "cell_type": "code",
-              "execution_count": None,
-              "metadata": {},
-              "outputs": [],
-              "source": [
-                  f"# Automated run triggered at {now.isoformat()}\n",
-                  "import datetime\n",
-                  f"print('Notebook execution started at: {now}')\n",
-                  "print('This run was triggered automatically')"
-              ]
-          }
-          
-          notebook['cells'].insert(0, timestamp_cell)
-          
-          with open('ll-3-1.ipynb', 'w', encoding='utf-8') as f:
-              json.dump(notebook, f, indent=2, ensure_ascii=False)
-          
-          print(f"✅ Modified at {now.strftime('%H:%M:%S')} UTC")
-          EOF
-        env:
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
-      
       - name: Push Notebook to Kaggle
         run: |
           cd ./notebook
@@ -128,4 +89,4 @@ jobs:
           echo "- **Time:** $(date -u)" >> $GITHUB_STEP_SUMMARY
           echo "- **Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Next Run:** 12 hours" >> $GITHUB_STEP_SUMMARY
+          echo "- **Next Run:** 11 hours 45 minutes" >> $GITHUB_STEP_SUMMARY
